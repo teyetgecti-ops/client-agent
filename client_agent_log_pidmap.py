@@ -17,7 +17,7 @@ interval = args.interval
 
 # ---------- ANAHTAR KELİMELER ----------
 keywords = ["disconnected", "respawn"]
-reported_logs = set()
+reported_lines = set()  # Aynı log tekrar göndermesin
 
 # ---------- YARDIMCI FONKSİYONLAR ----------
 def run_cmd(cmd):
@@ -29,9 +29,10 @@ def run_cmd(cmd):
 
 def scan_logcat_for_keywords():
     out = run_cmd("logcat -d -v time | tail -n 800")
-    found = []
+    found_keywords = []
     if not out:
-        return found
+        return found_keywords
+
     lower = out.lower()
     for kw in keywords:
         idx = 0
@@ -44,11 +45,12 @@ def scan_logcat_for_keywords():
             if end == -1:
                 end = len(lower)
             line = out[start:end].strip()
-            if line and line not in reported_logs:
-                reported_logs.add(line)
-                found.append(line)
+            # Sadece keyword gönder
+            if line and line not in reported_lines:
+                reported_lines.add(line)
+                found_keywords.append(kw.capitalize())  # Disconnected / Respawn
             idx = end
-    return found
+    return found_keywords
 
 def post_to_discord(message):
     try:
@@ -59,12 +61,9 @@ def post_to_discord(message):
 # ---------- ANA DÖNGÜ ----------
 print(f"UGTakip agent başlatılıyor... UG: {ug_name}")
 while True:
-    new_logs = scan_logcat_for_keywords()
-    if new_logs:
-        for l in new_logs:
-            kw_found = [kw.capitalize() for kw in keywords if kw in l.lower()]
-            if kw_found:
-                msg = f"{ug_name}: {', '.join(kw_found)}"
-                post_to_discord(msg)
-                print(msg)
+    new_keywords = scan_logcat_for_keywords()
+    for kw in new_keywords:
+        msg = f"{ug_name}: {kw}"
+        post_to_discord(msg)
+        print(msg)
     time.sleep(interval)

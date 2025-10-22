@@ -13,10 +13,11 @@ interval = 30  # saniye
 
 # Oyun paketleri ve isimleri
 oyunlar = {
-    "com.revenger.one": "Revenger 1",
-    "com.revenger.two": "Revenger 2",
-    "com.revenger.three": "Revenger 3",
+    "com.revengeronlineworle": "Revenger 1",
+    "com.revengeronlineworlf": "Revenger 2",
+    "com.revengeronlineworlg": "Revenger 3",  # eğer varsa
 }
+
 
 # Loglarda veya UI metinlerinde aranacak anahtar kelimeler
 keywords = ["bağlantı koptu", "connection lost", "disconnected", "respawn"]

@@ -1,32 +1,38 @@
 import subprocess
 import time
 import requests
+import argparse
 
-# UG cihaz adı ve Discord webhook parametreleri
-UG_NAME = "UG1"  # Başlatırken --ugname ile değiştirebilirsin
-WEBHOOK = "https://discord.com/api/webhooks/1416568811141988495/4-I2qf1l6ggkHcjg7xasLskM4-6CP-iuO3RJ9BWp0FBUn8EVWF9oKmhPxWaLJux45m1h"
+# ---------- ARGÜMANLAR ----------
+parser = argparse.ArgumentParser(description="UGTakip UIAutomator Agent")
+parser.add_argument("--ugname", required=True, help="UG cihaz adı")
+parser.add_argument("--webhook", required=True, help="Discord webhook URL")
+parser.add_argument("--interval", type=int, default=30, help="Log kontrol intervali (saniye)")
+args = parser.parse_args()
 
-# Bildirilecek log keywordleri
-KEYWORDS = ["disconnected", "respawn"]
+ug_name = args.ugname
+webhook_url = args.webhook
+interval = args.interval
 
-# Daha önce gönderilen logları takip etmek için set
+# ---------- ANAHTAR KELİMELER ----------
+keywords = ["disconnected", "respawn"]
 reported_logs = set()
 
-# Oyunun açılışındaki spam logları görmezden gelmek için süre (saniye)
-STARTUP_IGNORE_SECONDS = 15
-startup_time = time.time()
-
+# ---------- YARDIMCI FONKSİYONLAR ----------
 def run_cmd(cmd):
-    """Shell komutunu çalıştırır ve çıktısını döner"""
-    result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-    return result.stdout
+    try:
+        out = subprocess.check_output(cmd, shell=True, stderr=subprocess.DEVNULL, timeout=8)
+        return out.decode(errors="ignore")
+    except Exception:
+        return ""
 
 def scan_logcat_for_keywords():
-    """Logcat'i tarar, keyword bulunan yeni logları döner"""
     out = run_cmd("logcat -d -v time | tail -n 800")
     found = []
+    if not out:
+        return found
     lower = out.lower()
-    for kw in KEYWORDS:
+    for kw in keywords:
         idx = 0
         while True:
             idx = lower.find(kw, idx)
@@ -34,32 +40,31 @@ def scan_logcat_for_keywords():
                 break
             start = lower.rfind("\n", 0, idx) + 1
             end = lower.find("\n", idx)
-            if end == -1: end = len(lower)
+            if end == -1:
+                end = len(lower)
             line = out[start:end].strip()
             if line and line not in reported_logs:
                 reported_logs.add(line)
-                found.append(kw)  # Sadece keyword'u ekle
+                found.append(line)
             idx = end
     return found
 
 def post_to_discord(message):
-    """Discord webhook ile mesaj gönderir"""
-    requests.post(WEBHOOK, json={"content": message})
+    try:
+        requests.post(webhook_url, json={"content": message}, timeout=10)
+    except Exception as e:
+        print("Discord gönderilemedi:", e)
 
-def main_loop():
-    while True:
-        # Açılış log spamını ignore et
-        if time.time() - startup_time < STARTUP_IGNORE_SECONDS:
-            time.sleep(1)
-            continue
-
-        new_logs = scan_logcat_for_keywords()
-        if new_logs:
-            for kw in new_logs:
-                post_to_discord(f"{UG_NAME}: {kw.capitalize()}")
-
-        time.sleep(30)  # Interval (başlatırken değiştirilebilir)
-
-if __name__ == "__main__":
-    print(f"{UG_NAME} UGTakip agent started...")
-    main_loop()
+# ---------- ANA DÖNGÜ ----------
+print(f"UGTakip agent başlatılıyor... UG: {ug_name}")
+while True:
+    new_logs = scan_logcat_for_keywords()
+    if new_logs:
+        for l in new_logs:
+            # Mesajı sadece UG adı ve keyword olarak gönder
+            kw_found = [kw.capitalize() for kw in keywords if kw in l.lower()]
+            if kw_found:
+                msg = f"{ug_name}: {', '.join(kw_found)}"
+                post_to_discord(msg)
+                print(msg)
+    time.sleep(interval)

@@ -6,7 +6,7 @@ import argparse
 # ---------- ARGÜMANLAR ----------
 parser = argparse.ArgumentParser(description="UGTakip UIAutomator Agent")
 parser.add_argument("--ugname", required=True, help="UG cihaz adı")
-parser.add_argument("--webhook", required=True, help="Discord webhook URL")
+parser.add_argument("--webhook", required=True, help="https://discord.com/api/webhooks/1416568811141988495/4-I2qf1l6ggkHcjg7xasLskM4-6CP-iuO3RJ9BWp0FBUn8EVWF9oKmhPxWaLJux45m1h")
 parser.add_argument("--interval", type=int, default=30, help="Log kontrol intervali (saniye)")
 args = parser.parse_args()
 

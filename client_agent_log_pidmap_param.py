@@ -14,7 +14,7 @@ ug_name = args.ugname
 interval = args.interval
 
 # ---------- SABİT WEBHOOK ----------
-webhook_url = "https://discord.com/api/webhooks/1416568811141988495/4-I2qf1l6ggkHcjg7xasLskM4-6CP-iuO3RJ9BWp0FBUn8EVWF9oKmhPxWaLJux45m1h"
+webhook_url = "https://discord.com/api/webhooks/1430676212489130216/lhHkzELmG00B8EcRJS8o7tPFLuNZ8Q0dHQygjCJ0xn8mzeIZtXCbG2EDQJD6FcorSBlN"
 
 # ---------- ANAHTAR KELİMELER ----------
 keywords = ["disconnected", "respawn"]

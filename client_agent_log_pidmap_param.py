@@ -8,7 +8,7 @@ import argparse
 parser = argparse.ArgumentParser(description="UGTakip UIAutomator Agent")
 parser.add_argument("--ugname", required=True, help="UG cihaz adı (örn. UG1)")
 parser.add_argument("--webhook", required=True, help="Discord webhook URL")
-parser.add_argument("--interval", type=int, default=30, help="Log kontrol intervali (saniye)")
+parser.add_argument("--interval", type=int, default=30, help="Log kontrol aralığı (saniye)")
 args = parser.parse_args()
 
 ug_name = args.ugname
@@ -17,9 +17,9 @@ interval = args.interval
 
 # ---------- ANAHTAR KELİMELER ----------
 keywords = ["disconnected", "respawn"]
-reported_lines = set()  # Aynı log tekrar göndermesin
+reported = set()
 
-# ---------- YARDIMCI FONKSİYONLAR ----------
+# ---------- KOMUT YARDIMCISI ----------
 def run_cmd(cmd):
     try:
         out = subprocess.check_output(cmd, shell=True, stderr=subprocess.DEVNULL, timeout=8)
@@ -27,12 +27,12 @@ def run_cmd(cmd):
     except Exception:
         return ""
 
-def scan_logcat_for_keywords():
-    out = run_cmd("logcat -d -v time | tail -n 800")
-    found_keywords = []
+# ---------- LOG TARAMA ----------
+def scan_logs():
+    out = run_cmd("logcat -d -v time | tail -n 500")
+    found = []
     if not out:
-        return found_keywords
-
+        return found
     lower = out.lower()
     for kw in keywords:
         idx = 0
@@ -40,30 +40,26 @@ def scan_logcat_for_keywords():
             idx = lower.find(kw, idx)
             if idx == -1:
                 break
-            start = lower.rfind("\n", 0, idx) + 1
-            end = lower.find("\n", idx)
-            if end == -1:
-                end = len(lower)
-            line = out[start:end].strip()
-            # Sadece keyword gönder
-            if line and line not in reported_lines:
-                reported_lines.add(line)
-                found_keywords.append(kw.capitalize())  # Disconnected / Respawn
-            idx = end
-    return found_keywords
+            line = out[lower.rfind('\n', 0, idx)+1: lower.find('\n', idx)].strip()
+            if line and line not in reported:
+                reported.add(line)
+                found.append(kw.capitalize())
+            idx += 1
+    return list(set(found))
 
-def post_to_discord(message):
+# ---------- DİSCORD GÖNDERİCİ ----------
+def send_to_discord(msg):
     try:
-        requests.post(webhook_url, json={"content": message}, timeout=10)
-    except Exception as e:
-        print("Discord gönderilemedi:", e)
+        requests.post(webhook_url, json={"content": msg}, timeout=10)
+    except:
+        pass
 
 # ---------- ANA DÖNGÜ ----------
-print(f"UGTakip agent başlatılıyor... UG: {ug_name}")
+print(f"UGTakip başlatıldı ✅  |  Cihaz: {ug_name}")
 while True:
-    new_keywords = scan_logcat_for_keywords()
-    for kw in new_keywords:
-        msg = f"{ug_name}: {kw}"
-        post_to_discord(msg)
+    logs = scan_logs()
+    if logs:
+        msg = f"{ug_name}: {', '.join(logs)}"
+        send_to_discord(msg)
         print(msg)
     time.sleep(interval)

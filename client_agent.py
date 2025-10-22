@@ -1,4 +1,4 @@
-# client_agent_monitor.py
+import uiautomator2 as u2
 import subprocess
 import time
 import requests
@@ -6,7 +6,7 @@ from datetime import datetime
 
 # ---------- AYARLAR ----------
 webhook_url = "https://discord.com/api/webhooks/1416568811141988495/4-I2qf1l6ggkHcjg7xasLskM4-6CP-iuO3RJ9BWp0FBUn8EVWF9oKmhPxWaLJux45m1h"
-interval = 50  # saniye
+interval = 30  # saniye
 
 oyunlar = {
     "com.revengeronlineworle": "Revenger 1",
@@ -14,14 +14,14 @@ oyunlar = {
     "com.revengeronlineworlg": "Revenger 3",
 }
 
-# Loglarda aranacak anahtar kelimeler (yeni eklenenler dahil)
 keywords = [
     "bağlantı koptu",
     "connection lost",
     "disconnected",
     "respawn",
     "Login-Disconnected",
-    "ConnectIfDisconnected"
+    "ConnectIfDisconnected",
+    "ShowRespawnMessageBox"
 ]
 
 reported_logs = set()
@@ -31,12 +31,8 @@ def run_cmd(cmd):
     try:
         out = subprocess.check_output(cmd, shell=True, stderr=subprocess.DEVNULL, timeout=10)
         return out.decode(errors="ignore")
-    except Exception:
+    except:
         return ""
-
-def check_pid(pkg):
-    out = run_cmd(f"pidof {pkg}")
-    return out.strip()
 
 def scan_logcat_for_keywords():
     out = run_cmd("logcat -d -v time | tail -n 800")
@@ -70,8 +66,8 @@ def post_to_discord(content):
 def format_status(status_map, logs):
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     lines = [f"**UGTakip — Oyun Durum Raporu** ({now})"]
-    for pkg, info in status_map.items():
-        lines.append(f"- **{info['name']}**: {info['state']} {info.get('extra','')}")
+    for name, info in status_map.items():
+        lines.append(f"- **{name}**: {info}")
     if logs:
         lines.append("\n**Yeni Log Uyarıları:**")
         for l in logs:
@@ -81,39 +77,43 @@ def format_status(status_map, logs):
 
 # ---------- ANA DÖNGÜ ----------
 def main_loop():
+    d = u2.connect()  # Termux cihaz ile bağlan
     while True:
         status = {}
         new_logs = scan_logcat_for_keywords()
 
-        for pkg, pretty in oyunlar.items():
-            pid = check_pid(pkg)
-            aktif = bool(pid)
-            # Eğer oyun çalışıyor veya log uyarısı varsa "Çalışıyor" göster
-            state = "Çalışıyor ✅" if aktif else "Kapalı ❌"
-            if not aktif and new_logs:
-                state += " ⚠️ Bağlantı uyarısı"
+        for pkg, name in oyunlar.items():
+            try:
+                info = d.app_info(pkg)
+                aktif = True
+            except:
+                aktif = False
 
-            status[pkg] = {
-                "name": pretty,
-                "state": state,
-                "extra": f"(PID={pid})" if aktif else ""
-            }
+            if aktif:
+                state = "Çalışıyor ✅"
+            else:
+                if any(kw.lower() in l.lower() for l in new_logs for kw in keywords):
+                    state = "Kapalı ❌ ⚠️ Bağlantı uyarısı"
+                else:
+                    state = "Kapalı ❌"
 
-        # Discord gönderimi sadece gerekliyse
-        should_notify = any(s["state"].startswith("Kapalı") or "⚠️" in s["state"] for s in status.values())
+            status[name] = state
+
+        # Discord gönderimi
+        should_notify = any("Kapalı" in s or "⚠️" in s for s in status.values())
         if should_notify:
             msg = format_status(status, new_logs)
             post_to_discord(msg)
             print("Gönderildi:", datetime.now().isoformat())
 
         # Konsol debug
-        for s in status.values():
-            print(f"{s['name']}: {s['state']} {s['extra']}")
+        for name, s in status.items():
+            print(f"{name}: {s}")
         if new_logs:
             print("Yeni loglar:", len(new_logs))
 
         time.sleep(interval)
 
 if __name__ == "__main__":
-    print("UGTakip agent başlatılıyor...")
+    print("UGTakip UIAutomator agent başlatılıyor...")
     main_loop()

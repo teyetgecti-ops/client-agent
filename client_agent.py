@@ -1,7 +1,4 @@
 # client_agent_monitor.py
-# Termux üzerinde çalıştırılmak üzere güncellendi
-# Gereksinimler: requests, uiautomator erişimi tercih edilir
-
 import subprocess
 import time
 import requests
@@ -9,24 +6,27 @@ from datetime import datetime
 
 # ---------- AYARLAR ----------
 webhook_url = "https://discord.com/api/webhooks/1416568811141988495/4-I2qf1l6ggkHcjg7xasLskM4-6CP-iuO3RJ9BWp0FBUn8EVWF9oKmhPxWaLJux45m1h"
-interval = 30  # saniye
+interval = 50  # saniye
 
-# Oyun paketleri ve isimleri
 oyunlar = {
     "com.revengeronlineworle": "Revenger 1",
     "com.revengeronlineworlf": "Revenger 2",
-    "com.revengeronlineworlg": "Revenger 3",  # eğer varsa
+    "com.revengeronlineworlg": "Revenger 3",
 }
 
+# Loglarda aranacak anahtar kelimeler (yeni eklenenler dahil)
+keywords = [
+    "bağlantı koptu",
+    "connection lost",
+    "disconnected",
+    "respawn",
+    "Login-Disconnected",
+    "ConnectIfDisconnected"
+]
 
-# Loglarda veya UI metinlerinde aranacak anahtar kelimeler
-keywords = ["bağlantı koptu", "connection lost", "disconnected", "respawn"]
-
-# Daha önce bildirilen loglar
 reported_logs = set()
 
 # ---------- FONKSİYONLAR ----------
-
 def run_cmd(cmd):
     try:
         out = subprocess.check_output(cmd, shell=True, stderr=subprocess.DEVNULL, timeout=10)
@@ -38,19 +38,6 @@ def check_pid(pkg):
     out = run_cmd(f"pidof {pkg}")
     return out.strip()
 
-def check_ui_for_keywords():
-    """uiautomator dump ile ekran metinlerini al ve keywords kontrol et"""
-    run_cmd("uiautomator dump /sdcard/window_dump.xml >/dev/null 2>&1")
-    content = run_cmd("cat /sdcard/window_dump.xml 2>/dev/null")
-    found = []
-    if not content:
-        return found
-    lower = content.lower()
-    for kw in keywords:
-        if kw.lower() in lower:
-            found.append(kw)
-    return found
-
 def scan_logcat_for_keywords():
     out = run_cmd("logcat -d -v time | tail -n 800")
     found = []
@@ -60,7 +47,7 @@ def scan_logcat_for_keywords():
     for kw in keywords:
         idx = 0
         while True:
-            idx = lower.find(kw, idx)
+            idx = lower.find(kw.lower(), idx)
             if idx == -1:
                 break
             start = lower.rfind("\n", 0, idx) + 1
@@ -80,13 +67,11 @@ def post_to_discord(content):
     except Exception as e:
         print("Discord gönderilemedi:", e)
 
-def format_status(status_map, logs, ui_alerts):
+def format_status(status_map, logs):
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     lines = [f"**UGTakip — Oyun Durum Raporu** ({now})"]
     for pkg, info in status_map.items():
         lines.append(f"- **{info['name']}**: {info['state']} {info.get('extra','')}")
-    if ui_alerts:
-        lines.append("\n**UI Uyarıları:** " + ", ".join(ui_alerts))
     if logs:
         lines.append("\n**Yeni Log Uyarıları:**")
         for l in logs:
@@ -95,29 +80,29 @@ def format_status(status_map, logs, ui_alerts):
     return "\n".join(lines)
 
 # ---------- ANA DÖNGÜ ----------
-
 def main_loop():
     while True:
         status = {}
+        new_logs = scan_logcat_for_keywords()
+
         for pkg, pretty in oyunlar.items():
             pid = check_pid(pkg)
             aktif = bool(pid)
+            # Eğer oyun çalışıyor veya log uyarısı varsa "Çalışıyor" göster
+            state = "Çalışıyor ✅" if aktif else "Kapalı ❌"
+            if not aktif and new_logs:
+                state += " ⚠️ Bağlantı uyarısı"
+
             status[pkg] = {
                 "name": pretty,
-                "state": "Çalışıyor ✅" if aktif else "Kapalı ❌",
+                "state": state,
                 "extra": f"(PID={pid})" if aktif else ""
             }
 
-        # UI kontrolü
-        ui_alerts = check_ui_for_keywords()
-
-        # Log kontrolü
-        new_logs = scan_logcat_for_keywords()
-
-        # Eğer herhangi oyun kapalıysa veya yeni log/UI varsa gönder
-        should_notify = any(s["state"].startswith("Kapalı") for s in status.values()) or bool(new_logs) or bool(ui_alerts)
+        # Discord gönderimi sadece gerekliyse
+        should_notify = any(s["state"].startswith("Kapalı") or "⚠️" in s["state"] for s in status.values())
         if should_notify:
-            msg = format_status(status, new_logs, ui_alerts)
+            msg = format_status(status, new_logs)
             post_to_discord(msg)
             print("Gönderildi:", datetime.now().isoformat())
 
@@ -126,8 +111,6 @@ def main_loop():
             print(f"{s['name']}: {s['state']} {s['extra']}")
         if new_logs:
             print("Yeni loglar:", len(new_logs))
-        if ui_alerts:
-            print("UI uyarıları:", ui_alerts)
 
         time.sleep(interval)
 

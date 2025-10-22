@@ -1,6 +1,7 @@
 # client_agent_log_pidmap_sade.py
 # Termux üzerinde çalışacak şekilde hazırlandı
 # Amaç: sadece belirlenen log kelimelerini gördüğünde UG adına bildirim göndermek
+# Birden fazla log kelimesi olsa bile tek satır halinde Discord'a yolluyor
 
 import subprocess
 import time
@@ -12,7 +13,7 @@ webhook_url = "https://discord.com/api/webhooks/1416568811141988495/4-I2qf1l6ggk
 interval = 30  # saniye
 
 # Loglarda aranacak kelimeler (küçük harfe çevirip kontrol edilecek)
-keywords = ["bağlantı koptu", "connection lost", "disconnected", "respawn", "login-disconnected", "connectifdisconnected", "showrespawnmessagebox"]
+keywords = ["disconnected", "respawn"]
 
 # UG cihaz adı (başlatırken environment variable ile verilecek)
 ug_name = os.getenv("UG_NAME", "Bilinmeyen UG")
@@ -31,15 +32,14 @@ def run_cmd(cmd):
 
 def scan_logcat_for_keywords():
     out = run_cmd("logcat -d -v time | tail -n 800")
-    found = []
+    found = set()
     if not out:
         return found
     lower = out.lower()
     for kw in keywords:
-        if kw in lower:
-            if kw not in reported_logs:
-                reported_logs.add(kw)
-                found.append(kw.capitalize())  # "Disconnected" veya "Respawn"
+        if kw in lower and kw not in reported_logs:
+            reported_logs.add(kw)
+            found.add(kw.capitalize())  # "Disconnected" veya "Respawn"
     return found
 
 def post_to_discord(events):

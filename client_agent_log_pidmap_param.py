@@ -7,7 +7,7 @@ import argparse
 # ---------- ARGÜMANLAR ----------
 parser = argparse.ArgumentParser(description="UGTakip UIAutomator Agent")
 parser.add_argument("--ugname", required=True, help="UG cihaz adı (örn. UG1)")
-parser.add_argument("--interval", type=int, default=30, help="Log kontrol intervali (saniye)")
+parser.add_argument("--interval", type=int, default=30, help="Log kontrol aralığı (saniye)")
 args = parser.parse_args()
 
 ug_name = args.ugname
@@ -18,6 +18,7 @@ webhook_url = "https://discord.com/api/webhooks/1430676212489130216/lhHkzELmG00B
 
 # ---------- ANAHTAR KELİMELER ----------
 keywords = ["disconnected", "respawn"]
+ignore_phrases = ["fake disconnected", "simulated disconnect", "mock disconnect"]
 reported_logs = set()
 
 # ---------- YARDIMCI FONKSİYONLAR ----------
@@ -33,6 +34,7 @@ def scan_logcat_for_keywords():
     found = []
     if not out:
         return found
+
     lower = out.lower()
     for kw in keywords:
         idx = 0
@@ -45,6 +47,11 @@ def scan_logcat_for_keywords():
             if end == -1:
                 end = len(lower)
             line = out[start:end].strip()
+
+            if any(phrase in line.lower() for phrase in ignore_phrases):
+                idx = end
+                continue
+
             if line and line not in reported_logs:
                 reported_logs.add(line)
                 found.append(line)
@@ -55,17 +62,29 @@ def post_to_discord(message):
     try:
         requests.post(webhook_url, json={"content": message}, timeout=10)
     except Exception as e:
-        print("Discord gönderilemedi:", e)
+        print("⚠️ Discord gönderilemedi:", e)
+
+def clear_logcat():
+    try:
+        subprocess.run("logcat -c", shell=True, stderr=subprocess.DEVNULL)
+    except Exception:
+        pass
 
 # ---------- ANA DÖNGÜ ----------
-print(f"UGTakip agent başlatılıyor... UG: {ug_name}")
+print(f"🚀 UGTakip agent başlatıldı! UG: {ug_name}")
+start_time = time.time()
+
 while True:
     new_logs = scan_logcat_for_keywords()
+
     if new_logs:
+        hours_active = (time.time() - start_time) / 3600
         for l in new_logs:
             kw_found = [kw.capitalize() for kw in keywords if kw in l.lower()]
             if kw_found:
-                msg = f"{ug_name}: {', '.join(kw_found)}"
+                msg = f"{ug_name}: {', '.join(kw_found)} — {hours_active:.1f} saattir sorunsuz çalıştı ✅"
                 post_to_discord(msg)
-                print(msg)
+                print(f"[!] 🔴 {msg}")
+
+    clear_logcat()
     time.sleep(interval)
